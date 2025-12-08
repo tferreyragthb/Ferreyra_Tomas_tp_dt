@@ -12,19 +12,19 @@ class SequenceDataset(Dataset):
         return len(self.states)
 
     def pad_or_truncate(self, seq, pad_value=0):
-    # Copia explícita para evitar arrays con stride negativo
-    seq = torch.tensor(seq.copy(), dtype=torch.long)
+        # Copia explícita para evitar arrays con stride negativo
+        seq = torch.tensor(seq.copy(), dtype=torch.long)
 
-    if len(seq) >= self.seq_len:
-        return seq[:self.seq_len]
+        if len(seq) >= self.seq_len:
+            return seq[:self.seq_len]
 
-    pad_size = self.seq_len - len(seq)
-    pad = torch.full((pad_size,), pad_value, dtype=torch.long)
-    return torch.cat([seq, pad], dim=0)
+        pad_size = self.seq_len - len(seq)
+        pad = torch.full((pad_size,), pad_value, dtype=torch.long)
+        return torch.cat([seq, pad], dim=0)
 
     def __getitem__(self, idx):
-        s = self.pad_or_truncate(self.states[idx])        # (T,)
-        a = self.pad_or_truncate(self.actions[idx])       # (T,)
+        s = self.pad_or_truncate(self.states[idx])           # (T,)
+        a = self.pad_or_truncate(self.actions[idx])          # (T,)
         rtg = self.pad_or_truncate(self.returns_to_go[idx])  # (T,)
 
         rtg = rtg.float().unsqueeze(-1)  # (T, 1)
