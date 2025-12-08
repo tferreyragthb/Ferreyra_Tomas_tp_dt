@@ -1,49 +1,63 @@
 import torch
-from torch.utils.data import DataLoader
-import torch.nn as nn
-import torch.optim as optim
+import torch.nn.functional as F
 
-class Trainer:
-    def __init__(self, model, train_dataset, lr=1e-4, batch_size=8, device="cuda"):
-        self.device = device
-        self.model = model.to(device)
 
-        self.loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+def train_decision_transformer(
+    model,
+    train_loader,
+    optimizer,
+    device: str = "cuda",
+    num_epochs: int = 10,
+):
+    """
+    Entrena el Decision Transformer.
 
-        # Clasificación entre N ítems → CrossEntropyLoss
-        self.loss_fn = nn.CrossEntropyLoss()
+    Args:
+        model: instancia de DecisionTransformer
+        train_loader: DataLoader que devuelve batches con keys:
+            'states', 'actions', 'rtg', 'timesteps', 'groups', 'targets'
+        optimizer: optimizer de PyTorch (ej: Adam)
+        device: 'cuda' o 'cpu'
+        num_epochs: número de épocas
 
-        self.opt = optim.Adam(model.parameters(), lr=lr)
+    Returns:
+        model: modelo entrenado
+        history: lista con loss promedio por época
+    """
+    model.to(device)
+    history = []
 
-        self.loss_history = []  # para graficar
+    for epoch in range(num_epochs):
+        model.train()
+        total_loss = 0.0
 
-    def train(self, epochs=10):
-        action_dim = self.model.head.out_features
+        for batch in train_loader:
+            states = batch["states"].to(device)      # (B, L)
+            actions = batch["actions"].to(device)    # (B, L)
+            rtg = batch["rtg"].to(device)            # (B, L, 1)
+            timesteps = batch["timesteps"].to(device)# (B, L)
+            groups = batch["groups"].to(device)      # (B,)
+            targets = batch["targets"].to(device)    # (B, L)
 
-        self.model.train()
+            # Forward
+            logits = model(states, actions, rtg, timesteps, groups)  # (B, L, num_items)
 
-        for ep in range(epochs):
-            total_loss = 0
+            # Cross-entropy sobre todos los timesteps
+            loss = F.cross_entropy(
+                logits.reshape(-1, model.num_items),
+                targets.reshape(-1),
+                ignore_index=-1,  # ignorar padding
+            )
 
-            for states, actions, rtg in self.loader:
-                states = states.to(self.device)            # (B, T)
-                actions = actions.to(self.device)          # (B, T)
-                rtg = rtg.to(self.device)                  # (B, T, 1)
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
 
-                pred = self.model(states, actions, rtg)    # (B, T, action_dim)
+            total_loss += loss.item()
 
-                loss = self.loss_fn(
-                    pred[:, :-1, :].reshape(-1, action_dim), 
-                    actions[:, 1:].reshape(-1)
-                )
+        avg_loss = total_loss / len(train_loader)
+        history.append(avg_loss)
+        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_loss:.4f}")
 
-                self.opt.zero_grad()
-                loss.backward()
-                self.opt.step()
-
-                total_loss += loss.item()
-
-            avg_loss = total_loss / len(self.loader)
-            self.loss_history.append(avg_loss)
-
-            print(f"Epoch {ep+1}/{epochs} – Loss: {avg_loss:.4f}")
+    return model, history
