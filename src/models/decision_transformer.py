@@ -36,23 +36,24 @@ class DecisionTransformer(nn.Module):
         self.head = nn.Linear(hidden_dim, action_dim)
 
     def forward(self, states, actions, rtg):
-        """
-        states:  (B, T, state_dim)
-        actions: (B, T, action_dim)
-        rtg:     (B, T, 1)
-        """
-        B, T, _ = states.shape
+    # states: (B, T)
+    # actions: (B, T)
+    # rtg: (B, T)
 
-        x = (
-            self.state_embed(states)
-            + self.action_embed(actions)
-            + self.rtg_embed(rtg)
-            + self.pos_encoding[:, :T, :]
-        )
+    B, T = states.shape
 
-        # Transformer
-        h = self.transformer(x)
+    # Embeddings
+    states_emb = self.state_embedding(states)        # (B, T, d_model)
+    actions_emb = self.action_embedding(actions.long())  # (B, T, d_model)
+    rtg_emb = self.rtg_embedding(rtg.unsqueeze(-1))  # (B, T, 1) -> emb
 
-        # Predicción del próximo action
-        return self.head(h)
+    # Sumar embeddings como en Decision Transformer original
+    x = states_emb + actions_emb + rtg_emb
 
+    # Transformer
+    x = self.transformer(x)          # (B, T, d_model)
+
+    # Predecir próximas acciones
+    logits = self.head(x)            # (B, T, num_actions)
+
+    return logits
