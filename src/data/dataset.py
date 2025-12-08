@@ -1,76 +1,83 @@
-import numpy as np
 import torch
 from torch.utils.data import Dataset
+import numpy as np
 
-
-class RecommendationDataset(Dataset):
+class SequenceDataset(Dataset):
     """
-    Dataset para entrenar el Decision Transformer.
-
-    Cada elemento es una ventana de longitud `context_length`
-    tomada de una trayectoria producida por `create_dt_dataset`.
+    Dataset usado para entrenamiento del Decision Transformer.
+    Cada ítem del dataset es una ventana (context_length) sobre:
+    - items
+    - ratings (rewards)
+    - returns_to_go
     """
-
-    def __init__(self, trajectories, context_length: int = 20):
-        """
-        Args:
-            trajectories: lista de dicts con keys:
-                - 'items'
-                - 'ratings'
-                - 'returns_to_go'
-                - 'timesteps'
-                - 'user_group'
-            context_length: largo de la ventana de contexto.
-        """
+    def __init__(self, trajectories, context_length):
         self.trajectories = trajectories
         self.context_length = context_length
 
+        # Construir una lista de (trajectory_index, start_pos)
+        self.indices = []
+        for traj_idx, traj in enumerate(trajectories):
+            T = len(traj["items"])
+            for start in range(0, T):
+                self.indices.append((traj_idx, start))
+
     def __len__(self):
-        return len(self.trajectories)
+        return len(self.indices)
 
     def __getitem__(self, idx):
-        traj = self.trajectories[idx]
+        traj_idx, start_pos = self.indices[idx]
+        traj = self.trajectories[traj_idx]
 
-        # Secuencia completa
         items = traj["items"]
-        rtg = traj["returns_to_go"]
-        timesteps = traj["timesteps"]
-        group = traj["user_group"]
+        ratings = traj["ratings"]
+        user_group = traj["user_group"]
 
-        # Longitud efectiva de la secuencia
-        seq_len = min(len(items), self.context_length)
+        # Cortamos ventana
+        end_pos = start_pos + self.context_length
+        seq_items = items[start_pos:end_pos]
+        seq_ratings = ratings[start_pos:end_pos]
 
-        # Random start para data augmentation
-        if len(items) > self.context_length:
-            start_idx = np.random.randint(
-                0, len(items) - self.context_length + 1
-            )
-        else:
-            start_idx = 0
-
-        end_idx = start_idx + seq_len
-
-        # States / actions: usamos la misma secuencia de items
-        states = items[start_idx:end_idx]
-        actions = items[start_idx:end_idx]
-
-        # Targets: próximo item (shifted)
-        targets = np.zeros(seq_len, dtype=np.int64)
-        if seq_len > 1:
-            targets[:-1] = items[start_idx + 1 : end_idx]
-        targets[-1] = -1  # padding para el último timestep
-
-        # Returns-to-go (como columna)
-        rtg_seq = rtg[start_idx:end_idx].reshape(-1, 1)
-
-        # Timesteps
-        time_seq = timesteps[start_idx:end_idx]
+        # Padding
+        pad_len = self.context_length - len(seq_items)
+        if pad_len > 0:
+            seq_items = np.pad(seq_items, (0, pad_len), constant_values=0)
+            seq_ratings = np.pad(seq_ratings, (0, pad_len), constant_values=0)
 
         return {
-            "states": torch.tensor(states, dtype=torch.long),
-            "actions": torch.tensor(actions, dtype=torch.long),
-            "rtg": torch.tensor(rtg_seq, dtype=torch.float32),
-            "timesteps": torch.tensor(time_seq, dtype=torch.long),
-            "groups": torch.tensor(group, dtype=torch.long),
-            "targets": torch.tensor(targets, dtype=torch.long),
+            "items": torch.tensor(seq_items, dtype=torch.long),
+            "ratings": torch.tensor(seq_ratings, dtype=torch.float32),
+            "group": torch.tensor(user_group, dtype=torch.long),
+        }
+
+
+class TestDataset(Dataset):
+    """
+    Dataset para evaluación.
+    Cada entrada corresponde a un usuario de test y su secuencia completa de items vistos.
+    Aquí sólo preparamos el input inicial para que el modelo recomiende el próximo ítem.
+    """
+    def __init__(self, test_users, num_items, context_length):
+        self.test_users = test_users
+        self.num_items = num_items
+        self.context_length = context_length
+
+    def __len__(self):
+        return len(self.test_users)
+
+    def __getitem__(self, idx):
+        user = self.test_users[idx]
+
+        items = np.array(user["items"], dtype=np.int64)
+        group = int(user["group"])
+
+        # Tomar últimos context_length items como input al modelo
+        if len(items) >= self.context_length:
+            seq = items[-self.context_length:]
+        else:
+            pad = self.context_length - len(items)
+            seq = np.pad(items, (pad, 0), constant_values=0)
+
+        return {
+            "items": torch.tensor(seq, dtype=torch.long),
+            "group": torch.tensor(group, dtype=torch.long),
         }
