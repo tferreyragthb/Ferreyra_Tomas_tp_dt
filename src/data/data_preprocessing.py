@@ -22,7 +22,7 @@ import pandas as pd
 # Cambiar a 'goodreads' si se quiere trabajar con libros
 DATASET = "netflix"   # 'netflix' o 'goodreads'
 
-# ajuste menor para activar git
+
 
 # ============================================================
 # Descarga de datos desde el repo oficial si no están presentes
