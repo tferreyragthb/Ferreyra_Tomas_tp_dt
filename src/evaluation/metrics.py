@@ -1,29 +1,40 @@
 import numpy as np
 
-def hit_rate(preds, target):
+def hit_rate_at_k(predictions, ground_truth, k=10):
     """
-    preds: lista ordenada de ítems recomendados (top-k)
-    target: ítem real que ocurrió
+    predictions: lista de listas -> items recomendados ordenados
+    ground_truth: lista de items verdaderos (1 por usuario)
     """
-    return 1.0 if target in preds else 0.0
+    hits = 0
+    for pred, gt in zip(predictions, ground_truth):
+        if gt in pred[:k]:
+            hits += 1
+    return hits / len(ground_truth)
 
 
-def ndcg(preds, target):
+def ndcg_at_k(predictions, ground_truth, k=10):
     """
-    NDCG@k donde target es el ítem verdadero.
+    Calcula NDCG@K.
     """
-    if target in preds:
-        index = preds.index(target)
-        return 1.0 / np.log2(index + 2)
-    return 0.0
+    ndcg_total = 0.0
+
+    for pred, gt in zip(predictions, ground_truth):
+        if gt in pred[:k]:
+            rank = pred.index(gt)
+            ndcg_total += 1 / np.log2(rank + 2)  # +2 porque rank empieza en 0
+
+    return ndcg_total / len(ground_truth)
 
 
-def mrr(preds, target):
+def mrr_at_k(predictions, ground_truth, k=10):
     """
-    MRR@k
+    Mean Reciprocal Rank @ K.
     """
-    if target in preds:
-        index = preds.index(target)
-        return 1.0 / (index + 1)
-    return 0.0
+    mrr_total = 0.0
 
+    for pred, gt in zip(predictions, ground_truth):
+        if gt in pred[:k]:
+            rank = pred.index(gt)
+            mrr_total += 1.0 / (rank + 1)
+
+    return mrr_total / len(ground_truth)
