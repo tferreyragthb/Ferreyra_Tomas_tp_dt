@@ -5,52 +5,43 @@ class DecisionTransformer(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_dim=128):
         super().__init__()
 
-        # Para ítems representados como enteros (0..751)
-        self.state_embed = nn.Embedding(state_dim, hidden_dim)
-        self.action_embed = nn.Embedding(action_dim, hidden_dim)
-
-        # RTG sí es numérico (B, T, 1)
+        # Embeds
+        self.state_embed = nn.Linear(state_dim, hidden_dim)
+        self.action_embed = nn.Linear(action_dim, hidden_dim)
         self.rtg_embed = nn.Linear(1, hidden_dim)
 
+        # Transformer
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=hidden_dim,
             nhead=4,
-            batch_first=True
+            batch_first=True,
+            dim_feedforward=4 * hidden_dim
         )
-
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=3)
 
-        # Predecir acciones: logits (B, T, action_dim)
+        # Output head
         self.head = nn.Linear(hidden_dim, action_dim)
 
     def forward(self, states, actions, rtg):
-    """
-    states: (B, T) — índices de ítems
-    actions: (B, T) — índices de ítems
-    rtg: (B, T) — returns to go
-    """
+        """
+        states:  (B, T, state_dim)
+        actions: (B, T, action_dim)
+        rtg:     (B, T, 1)
+        """
+        B, T, _ = states.shape
 
-    B, T = states.shape
+        # Embeddings
+        s = self.state_embed(states)     # (B, T, H)
+        a = self.action_embed(actions)   # (B, T, H)
+        r = self.rtg_embed(rtg)          # (B, T, H)
 
-    # RTG necesita un canal extra
-    if rtg.dim() == 2:
-        rtg = rtg.unsqueeze(-1)   # (B, T, 1)
+        # Sum modality embeddings
+        x = s + a + r                    # (B, T, H)
 
-    rtg = rtg.float()             
+        # Transformer
+        x = self.transformer(x)          # (B, T, H)
 
-    # Embeddings
-    s = self.state_embed(states)       # (B, T, H)
-    a = self.action_embed(actions)     # (B, T, H)
-    r = self.rtg_embed(rtg)            # (B, T, H)
+        # Predict next action
+        pred = self.head(x)              # (B, T, action_dim)
 
-    # Combinación
-    x = s + a + r                      # (B, T, H)
-
-    # Transformer
-    x = self.transformer(x)            # (B, T, H)
-
-    # Predicción
-    pred = self.head(x)                # (B, T, action_dim)
-
-    return pred
-
+        return pred
