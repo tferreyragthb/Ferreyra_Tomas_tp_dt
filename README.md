@@ -21,11 +21,11 @@ El dataset provisto por la cátedra consta de:
 ------------------------------------------------------------
 ESTRUCTURA DEL PROYECTO
 ------------------------------------------------------------
-Ferreyra_Tomas_tp_dt/
+apellido_nombre_tp_dt/
 │
-├── data/                      (dataset provisto por la cátedra)
-│   ├── train/
-│   └── test_users/
+├── data/                          # (proporcionado - no entregar)
+│   ├── train/netflix8_train.df
+│   └── test_users/netflix8_test.json
 │
 ├── notebooks/
 │   ├── 01_exploracion_dataset.ipynb
@@ -38,23 +38,26 @@ Ferreyra_Tomas_tp_dt/
 │   │   ├── load_data.py
 │   │   ├── preprocessing.py
 │   │   └── dataset.py
+│   │
 │   ├── models/
-│   │   ├── baselines.py
-│   │   └── decision_transformer.py
+│   │   ├── decision_transformer.py
+│   │   └── baselines.py
+│   │
 │   ├── training/
 │   │   └── trainer.py
+│   │
 │   └── evaluation/
 │       ├── metrics.py
 │       └── evaluate.py
 │
 ├── results/
-│   ├── checkpoints/      (modelo entrenado: dt_model.pth)
-│   ├── logs/             (training_log.txt)
-│   └── figures/          (gráficos generados)
+│   ├── figures/
+│   ├── logs/
+│   └── checkpoints/
 │
-├── README.txt
-├── requirements.txt
-└── REPORTE.pdf
+├── REPORTE.pdf
+├── README.md
+└── requirements.txt
 
 ------------------------------------------------------------
 EJECUCIÓN
