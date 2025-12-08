@@ -2,51 +2,37 @@ import torch
 import torch.nn as nn
 
 class DecisionTransformer(nn.Module):
-    def __init__(
-        self,
-        state_dim,
-        action_dim,
-        hidden_dim=128,
-        n_layers=3,
-        n_heads=4,
-    ):
+    def __init__(self, state_dim, action_dim, hidden_dim=128):
         super().__init__()
 
-        self.state_embedding = nn.Embedding(state_dim, hidden_dim)
-        self.action_embedding = nn.Embedding(action_dim, hidden_dim)
-        self.rtg_embedding = nn.Linear(1, hidden_dim)
+        self.state_embed = nn.Linear(state_dim, hidden_dim)
+        self.action_embed = nn.Linear(action_dim, hidden_dim)
+        self.rtg_embed = nn.Linear(1, hidden_dim)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=hidden_dim,
-            nhead=n_heads,
+            nhead=4,
             batch_first=True
         )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
 
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=3)
         self.head = nn.Linear(hidden_dim, action_dim)
 
     def forward(self, states, actions, rtg):
         """
-        states: (B, T)
-        actions: (B, T)
-        rtg: (B, T)
+        states: (B, T, state_dim)
+        actions: (B, T, action_dim)
+        rtg: (B, T, 1)
         """
+        B, T, _ = states.shape
 
-        # ---- Shapes ----
-        B, T = states.shape
+        s = self.state_embed(states)     # (B, T, H)
+        a = self.action_embed(actions)   # (B, T, H)
+        r = self.rtg_embed(rtg)          # (B, T, H)
 
-        # ---- Embeddings ----
-        states_emb = self.state_embedding(states)               # (B, T, d)
-        actions_emb = self.action_embedding(actions.long())     # (B, T, d)
-        rtg_emb = self.rtg_embedding(rtg.unsqueeze(-1))         # (B, T, 1) -> (B, T, d)
+        x = s + a + r                    # (B, T, H)
 
-        # ---- Combine embeddings ----
-        x = states_emb + actions_emb + rtg_emb                  # (B, T, d)
+        x = self.transformer(x)          # (B, T, H)
+        pred = self.head(x)              # (B, T, action_dim)
 
-        # ---- Transformer ----
-        x = self.transformer(x)                                 # (B, T, d)
-
-        # ---- Output logits ----
-        logits = self.head(x)                                   # (B, T, action_dim)
-
-        return logits
+        return pred
