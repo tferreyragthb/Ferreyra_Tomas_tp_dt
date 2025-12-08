@@ -1,96 +1,71 @@
 import os
 import pickle
 import numpy as np
-import torch
 
 def normalize_item_ids(df_train):
     """
-    Convierte los item_ids arbitrarios (ej: 472, 510, 338...)
-    a IDs consecutivos desde 0 ... N-1
+    Normaliza los item_ids del dataset crudo a IDs consecutivos [0..N-1].
+    Esto permite mapear tanto el train como el test al mismo espacio.
     """
-
-    all_items = set()
-    for seq in df_train["items"]:
-        all_items.update(seq)
-
-    all_items = sorted(all_items)
+    all_items = sorted({i for seq in df_train["items"] for i in seq})
     mapping = {old: new for new, old in enumerate(all_items)}
 
-    # aplicar el mapeo
     df_train["items"] = df_train["items"].apply(
-        lambda seq: np.array([mapping[i] for i in seq])
+        lambda seq: np.array([mapping[i] for i in seq], dtype=np.int64)
     )
 
     return mapping, len(all_items)
 
 
-def create_dt_dataset(df_train, save_dir="data/processed/", gamma=1.0):
+def create_dt_dataset(df_train, save_path="data/processed/trajectories_train.pkl"):
     """
-    Crea los 3 archivos necesarios para entrenar el Decision Transformer:
-      - states.pkl
-      - actions.pkl
-      - returns_to_go.pkl
+    Convierte el DataFrame crudo al formato Decision Transformer.
 
-    A partir del dataframe crudo (items + ratings)
+    Cada usuario produce UNA trayectoria:
+
+        {
+            'items': ndarray(int64),
+            'ratings': ndarray(float32),
+            'returns_to_go': ndarray(float32),
+            'timesteps': ndarray(int64),
+            'user_group': int
+        }
     """
 
-    print("📦 Generando dataset procesado...")
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
-    os.makedirs(save_dir, exist_ok=True)
+    trajectories = []
 
-    # Obtener listas crudas
-    items = df_train["items"].tolist()
-    ratings = df_train["ratings"].tolist()
+    for _, row in df_train.iterrows():
+        items = row["items"].astype(np.int64)
+        ratings = row["ratings"].astype(np.float32)
+        group = int(row["user_group"])
 
-    # ===============================
-    # Crear secuencias DT
-    # ===============================
-    states = []
-    actions = []
-    rtg = []
+        n = len(items)
 
-    for item_seq, rating_seq in zip(items, ratings):
+        # === returns-to-go acumulado hacia adelante ===
+        returns = np.zeros(n, dtype=np.float32)
+        returns[-1] = ratings[-1]
 
-        n = len(item_seq)
+        for t in range(n - 2, -1, -1):
+            returns[t] = ratings[t] + returns[t + 1]
 
-        seq_states = []
-        seq_actions = []
-        seq_rtg = []
+        timesteps = np.arange(n, dtype=np.int64)
 
-        for t in range(n):
-            # Estado = todos los ítems vistos hasta t-1
-            state_t = item_seq[:t]
+        trajectory = {
+            "items": items,
+            "ratings": ratings,
+            "returns_to_go": returns,
+            "timesteps": timesteps,
+            "user_group": group
+        }
 
-            # Acción = ítem actual
-            action_t = int(item_seq[t])
+        trajectories.append(trajectory)
 
-            # RTG = suma de ratings futuros
-            rtg_t = float(sum(rating_seq[t:]))
+    with open(save_path, "wb") as f:
+        pickle.dump(trajectories, f)
 
-            seq_states.append(state_t)
-            seq_actions.append(action_t)
-            seq_rtg.append(rtg_t)
+    print(f"✅ Guardado dataset DT en {save_path}")
+    print(f"   Total trayectorias: {len(trajectories)}")
 
-        states.append(seq_states)
-        actions.append(seq_actions)
-        rtg.append(seq_rtg)
-
-    # ===============================
-    # Guardar archivos procesados
-    # ===============================
-
-    with open(os.path.join(save_dir, "states.pkl"), "wb") as f:
-        pickle.dump(states, f)
-
-    with open(os.path.join(save_dir, "actions.pkl"), "wb") as f:
-        pickle.dump(actions, f)
-
-    with open(os.path.join(save_dir, "returns_to_go.pkl"), "wb") as f:
-        pickle.dump(rtg, f)
-
-    print(f"✅ Dataset procesado guardado en {save_dir}")
-    print("   - states.pkl")
-    print("   - actions.pkl")
-    print("   - returns_to_go.pkl")
-
-    return states, actions, rtg
+    return trajectories
