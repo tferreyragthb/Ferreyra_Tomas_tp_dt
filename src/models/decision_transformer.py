@@ -5,43 +5,39 @@ class DecisionTransformer(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_dim=128):
         super().__init__()
 
-        # Embeds
-        self.state_embed = nn.Linear(state_dim, hidden_dim)
-        self.action_embed = nn.Linear(action_dim, hidden_dim)
+        # Estado es un ÍNDICE -> usar EMBEDDING
+        self.state_embed = nn.Embedding(state_dim, hidden_dim)
+
+        # Acción también es un ÍNDICE -> usar EMBEDDING
+        self.action_embed = nn.Embedding(action_dim, hidden_dim)
+
+        # RTG sí es escalar
         self.rtg_embed = nn.Linear(1, hidden_dim)
 
-        # Transformer
-        encoder_layer = nn.TransformerEncoderLayer(
+        layer = nn.TransformerEncoderLayer(
             d_model=hidden_dim,
             nhead=4,
-            batch_first=True,
-            dim_feedforward=4 * hidden_dim
+            batch_first=True
         )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=3)
+        self.transformer = nn.TransformerEncoder(layer, num_layers=3)
 
-        # Output head
+        # predicción de próxima acción (clasificación entre 752 ítems)
         self.head = nn.Linear(hidden_dim, action_dim)
 
     def forward(self, states, actions, rtg):
         """
-        states:  (B, T, state_dim)
-        actions: (B, T, action_dim)
-        rtg:     (B, T, 1)
+        states: (B, T)
+        actions: (B, T)
+        rtg: (B, T, 1)
         """
-        B, T, _ = states.shape
 
-        # Embeddings
-        s = self.state_embed(states)     # (B, T, H)
-        a = self.action_embed(actions)   # (B, T, H)
-        r = self.rtg_embed(rtg)          # (B, T, H)
+        s = self.state_embed(states)       # (B, T, H)
+        a = self.action_embed(actions)     # (B, T, H)
+        r = self.rtg_embed(rtg)            # (B, T, H)
 
-        # Sum modality embeddings
-        x = s + a + r                    # (B, T, H)
+        x = s + a + r
 
-        # Transformer
-        x = self.transformer(x)          # (B, T, H)
-
-        # Predict next action
-        pred = self.head(x)              # (B, T, action_dim)
+        x = self.transformer(x)
+        pred = self.head(x)                # (B, T, action_dim)
 
         return pred
