@@ -1,4 +1,3 @@
-%%writefile /content/Ferreyra_Tomas_tp_dt/src/data/dataset.py
 import numpy as np
 import torch
 from torch.utils.data import Dataset
