@@ -12,39 +12,29 @@ class Trainer:
         self.opt = optim.Adam(model.parameters(), lr=lr)
         self.loss_fn = nn.MSELoss()
 
-    def train(self, epochs=2):
-        self.model.train()
+        self.history = []   # 🔥 guarda pérdidas por epoch
 
+    def train(self, epochs=10):
+        self.model.train()
         for ep in range(epochs):
             total_loss = 0
 
             for states, actions, rtg in self.loader:
+                states = states.to(self.device)
+                actions = actions.to(self.device)
+                rtg = rtg.to(self.device)
 
-                # ---- TIPOS CORRECTOS ---- #
-                states = states.float().to(self.device)     # (B, T, state_dim)
-                actions = actions.float().to(self.device)   # (B, T, action_dim)
-
-                # aseguramos dimensión del RTG → (B, T, 1)
-                if rtg.dim() == 2:
-                    rtg = rtg.unsqueeze(-1)
-
-                rtg = rtg.float().to(self.device)
-
-                # ---- FORWARD ---- #
                 pred = self.model(states, actions, rtg)
 
-                # Queremos predecir el action siguiente (teacher forcing)
-                # pred[:, :-1, :] vs true_actions[:, 1:, :]
-                loss = self.loss_fn(
-                    pred[:, :-1, :],
-                    actions[:, 1:, :]
-                )
+                loss = self.loss_fn(pred[:, :-1, :], actions[:, 1:, :])
 
-                # ---- BACKPROP ---- #
                 self.opt.zero_grad()
                 loss.backward()
                 self.opt.step()
 
                 total_loss += loss.item()
 
-            print(f"Epoch {ep+1}/{epochs} - Loss: {total_loss:.4f}")
+            avg_loss = total_loss / len(self.loader)
+            self.history.append(avg_loss)
+
+            print(f"Epoch {ep+1}/{epochs} - Loss: {avg_loss:.4f}")
