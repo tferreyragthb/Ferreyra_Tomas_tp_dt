@@ -5,13 +5,11 @@ class DecisionTransformer(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_dim=128):
         super().__init__()
 
-        # Estado es un ÍNDICE -> usar EMBEDDING
+        # Estados y acciones son ÍNDICES → usar embeddings
         self.state_embed = nn.Embedding(state_dim, hidden_dim)
-
-        # Acción también es un ÍNDICE -> usar EMBEDDING
         self.action_embed = nn.Embedding(action_dim, hidden_dim)
 
-        # RTG sí es escalar
+        # RTG es escalar → Linear
         self.rtg_embed = nn.Linear(1, hidden_dim)
 
         layer = nn.TransformerEncoderLayer(
@@ -21,7 +19,7 @@ class DecisionTransformer(nn.Module):
         )
         self.transformer = nn.TransformerEncoder(layer, num_layers=3)
 
-        # predicción de próxima acción (clasificación entre 752 ítems)
+        # Predicción de acción siguiente
         self.head = nn.Linear(hidden_dim, action_dim)
 
     def forward(self, states, actions, rtg):
@@ -31,13 +29,12 @@ class DecisionTransformer(nn.Module):
         rtg: (B, T, 1)
         """
 
-        s = self.state_embed(states)       # (B, T, H)
-        a = self.action_embed(actions)     # (B, T, H)
-        r = self.rtg_embed(rtg)            # (B, T, H)
+        s = self.state_embed(states)     # (B, T, H)
+        a = self.action_embed(actions)   # (B, T, H)
+        r = self.rtg_embed(rtg)          # (B, T, H)
 
         x = s + a + r
-
         x = self.transformer(x)
-        pred = self.head(x)                # (B, T, action_dim)
+        pred = self.head(x)              # (B, T, action_dim)
 
         return pred
