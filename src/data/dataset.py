@@ -38,4 +38,7 @@ class SequenceDataset(Dataset):
         return {
             "states": torch.tensor(items, dtype=torch.long),
             "actions": torch.tensor(ratings, dtype=torch.float32),
-            "returns_to_go": torch.tensor(rtg, dtype=torch.float32
+            "returns_to_go": torch.tensor(rtg, dtype=torch.float32),
+            "timesteps": torch.tensor(timesteps, dtype=torch.long),
+            "user_group": torch.tensor(group, dtype=torch.long),
+        }
