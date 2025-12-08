@@ -1,38 +1,22 @@
 import numpy as np
 
-def create_dt_dataset(df_train):
+def normalize_item_ids(df_train):
     """
-    Convierte el dataset raw a formato compatible con Decision Transformer.
-    
-    Cada usuario se convierte en una trayectoria con:
-      - items
-      - ratings
-      - returns_to_go
-      - timesteps
-      - user_group
+    Convierte los item_ids arbitrarios (ej: 472, 338, 510, ...)
+    a IDs consecutivos desde 0 ... N-1
     """
-    
-    trajectories = []
 
-    for _, row in df_train.iterrows():
-        items = np.array(row["items"], dtype=np.int32)
-        ratings = np.array(row["ratings"], dtype=np.float32)
-        group = int(row["user_group"])
+    # obtener todos los items únicos
+    all_items = set()
+    for seq in df_train["items"]:
+        all_items.update(seq)
 
-        # returns-to-go (suma hacia adelante)
-        rtg = np.zeros_like(ratings)
-        rtg[-1] = ratings[-1]
-        for t in range(len(ratings) - 2, -1, -1):
-            rtg[t] = ratings[t] + rtg[t + 1]
+    all_items = sorted(all_items)
+    mapping = {old: new for new, old in enumerate(all_items)}
 
-        traj = {
-            "items": items,
-            "ratings": ratings,
-            "returns_to_go": rtg,
-            "timesteps": np.arange(len(items), dtype=np.int32),
-            "user_group": group,
-        }
+    # aplicar el mapeo
+    df_train["items"] = df_train["items"].apply(
+        lambda seq: np.array([mapping[i] for i in seq])
+    )
 
-        trajectories.append(traj)
-
-    return trajectories
+    return mapping, len(all_items)
