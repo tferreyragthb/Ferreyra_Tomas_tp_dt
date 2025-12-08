@@ -24,30 +24,33 @@ class DecisionTransformer(nn.Module):
         self.head = nn.Linear(hidden_dim, action_dim)
 
     def forward(self, states, actions, rtg):
-        """
-        states: (B, T) — índices de ítems
-        actions: (B, T) — índices de ítems
-        rtg: (B, T) — returns to go
-        """
+    """
+    states: (B, T) — índices de ítems
+    actions: (B, T) — índices de ítems
+    rtg: (B, T) — returns to go
+    """
 
-        B, T = states.shape
+    B, T = states.shape
 
-        # RTG necesita un canal extra
-        if rtg.dim() == 2:
-            rtg = rtg.unsqueeze(-1)   # (B, T, 1)
+    # RTG necesita un canal extra
+    if rtg.dim() == 2:
+        rtg = rtg.unsqueeze(-1)   # (B, T, 1)
 
-        # Embeddings
-        s = self.state_embed(states)       # (B, T, H)
-        a = self.action_embed(actions)     # (B, T, H)
-        r = self.rtg_embed(rtg)            # (B, T, H)
+    rtg = rtg.float()             
 
-        # Combinación
-        x = s + a + r                      # (B, T, H)
+    # Embeddings
+    s = self.state_embed(states)       # (B, T, H)
+    a = self.action_embed(actions)     # (B, T, H)
+    r = self.rtg_embed(rtg)            # (B, T, H)
 
-        # Transformer
-        x = self.transformer(x)            # (B, T, H)
+    # Combinación
+    x = s + a + r                      # (B, T, H)
 
-        # Predicción de acción siguiente
-        pred = self.head(x)                # (B, T, action_dim)
+    # Transformer
+    x = self.transformer(x)            # (B, T, H)
 
-        return pred
+    # Predicción
+    pred = self.head(x)                # (B, T, action_dim)
+
+    return pred
+
