@@ -1,52 +1,60 @@
 import torch
-from src.evaluation.metrics import (
-    hit_rate_at_k,
-    ndcg_at_k,
-    mrr_at_k,
-)
+from torch.nn.functional import softmax
+import numpy as np
+from src.evaluation.metrics import hit_rate_at_k, ndcg_at_k, mrr_at_k
 
-@torch.no_grad()
-def evaluate_model(model, dataloader, device="cpu", k=10):
-    """
-    Evalúa el modelo sobre un DataLoader de test.
 
-    Retorna un diccionario con:
-        - hit_rate
-        - ndcg
-        - mrr
-    """
-
+def evaluate_model(model, dataloader, device, k=10):
     model.eval()
-    all_predictions = []
-    all_ground_truth = []
 
-    for batch in dataloader:
-        states = batch["states"].to(device)
-        actions = batch["actions"].to(device)
-        rtg = batch["rtg"].to(device)
-        timesteps = batch["timesteps"].to(device)
-        groups = batch["groups"].to(device)
-        targets = batch["targets"].to(device)
+    all_hits = []
+    all_ndcg = []
+    all_mrr = []
 
-        logits = model(
-            states=states,
-            actions=actions,
-            returns_to_go=rtg,
-            timesteps=timesteps,
-            user_groups=groups,
-        )
+    with torch.no_grad():
+        for batch in dataloader:
 
-        topk = torch.topk(logits, k=k, dim=-1).indices.cpu().numpy()
-        ground_truth = targets.cpu().numpy()
+            items = batch["items"].to(device)         # (B, context_length)
+            groups = batch["group"].to(device)        # (B)
 
-        for pred_seq, gt_seq in zip(topk, ground_truth):
-            all_predictions.append(pred_seq.tolist())
-            all_ground_truth.append(gt_seq[0])
+            B, T = items.shape
 
-    metrics = {
-        "hit_rate": hit_rate_at_k(all_predictions, all_ground_truth, k),
-        "ndcg": ndcg_at_k(all_predictions, all_ground_truth, k),
-        "mrr": mrr_at_k(all_predictions, all_ground_truth, k),
+            # Timesteps secuenciales
+            timesteps = torch.arange(T, dtype=torch.long, device=device)
+            timesteps = timesteps.unsqueeze(0).repeat(B, 1)
+
+            # RTG dummy (valor alto)
+            rtg = torch.ones((B, T, 1), dtype=torch.float32, device=device) * 50.0
+
+            # Pasar por el modelo
+            logits = model(
+                states=items,
+                actions=None,
+                returns_to_go=rtg,
+                timesteps=timesteps,
+                groups=groups,
+            )
+
+            # logits finales (último paso)
+            last_logits = logits[:, -1, :]    # (B, num_items)
+            probs = softmax(last_logits, dim=-1)
+
+            # Ground truths reales (último item verdadero)
+            true_items = items[:, -1].cpu().numpy()
+
+            # Top-k predicciones
+            topk = torch.topk(probs, k, dim=-1).indices.cpu().numpy()
+
+            for i in range(B):
+                pred = topk[i]
+                true = true_items[i]
+
+                all_hits.append(hit_rate_at_k(true, pred))
+                all_ndcg.append(ndcg_at_k(true, pred))
+                all_mrr.append(mrr_at_k(true, pred))
+
+    return {
+        f"hit_rate@{k}": float(np.mean(all_hits)),
+        f"ndcg@{k}": float(np.mean(all_ndcg)),
+        f"mrr@{k}": float(np.mean(all_mrr)),
     }
-
-    return metrics
