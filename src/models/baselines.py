@@ -2,9 +2,7 @@ import numpy as np
 import torch
 
 class PopularityRecommender:
-    """
-    Baseline simple: recomienda los ítems más populares.
-    """
+  
     def __init__(self, train_interactions, num_items):
         """
         train_interactions: lista de listas con items usados por cada usuario
