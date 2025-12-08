@@ -1,35 +1,41 @@
 import torch
 from torch.utils.data import Dataset
+import numpy as np
 
 class SequenceDataset(Dataset):
-    def __init__(self, df, max_len=50):
-        self.df = df
+    """
+    Convierte trayectorias preprocesadas en tensores para Decision Transformer.
+    """
+
+    def __init__(self, trajectories, max_len=50):
+        self.trajectories = trajectories
         self.max_len = max_len
 
     def __len__(self):
-        return len(self.df)
+        return len(self.trajectories)
+
+    def pad_or_truncate(self, seq):
+        """
+        Rellena con ceros o trunca secuencias al largo max_len.
+        """
+        seq = np.array(seq)
+        if len(seq) >= self.max_len:
+            return seq[-self.max_len:]
+        else:
+            pad_len = self.max_len - len(seq)
+            return np.concatenate([np.zeros(pad_len), seq])
 
     def __getitem__(self, idx):
-        row = self.df.iloc[idx]
-        items = row["items"]
-        ratings = row["ratings"]
+        traj = self.trajectories[idx]
 
-        T = min(len(items), self.max_len)
+        items = self.pad_or_truncate(traj["items"])
+        ratings = self.pad_or_truncate(traj["ratings"])
+        rtg = self.pad_or_truncate(traj["returns_to_go"])
+        timesteps = self.pad_or_truncate(traj["timesteps"])
 
-        # Dimensiones del item_id (máximo item + 1)
-        n_items = max(max(items), 799) + 1
+        group = traj["user_group"]
 
-        states = torch.zeros(self.max_len, n_items)
-        actions = torch.zeros(self.max_len, n_items)
-        rtg = torch.zeros(self.max_len, 1)
-
-        # Construcción de secuencias
-        for i in range(T):
-            item = items[i]
-            rating = ratings[i]
-
-            states[i, item] = 1.0
-            actions[i, item] = rating / 5.0
-            rtg[i] = sum(ratings[i:]) / 50.0
-
-        return states, actions, rtg
+        return {
+            "states": torch.tensor(items, dtype=torch.long),
+            "actions": torch.tensor(ratings, dtype=torch.float32),
+            "returns_to_go": torch.tensor(rtg, dtype=torch.float32
